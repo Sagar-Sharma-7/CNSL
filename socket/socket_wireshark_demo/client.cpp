@@ -16,11 +16,12 @@ vector<int> bytesToBits(const vector<uint8_t>& bytes, int bitsCount) {
             bits.push_back((bytes[i] >> j) & 1);
         }
     }
-    if (bits.size() > bitsCount) bits.resize(bitsCount);
+    if ((int)bits.size() > bitsCount) bits.resize(bitsCount);
     return bits;
 }
 
 vector<int> crcDivide(vector<int> data) {
+    // Append zeros (degree of polynomial -1)
     for (int i = 0; i < POLY_SIZE - 1; ++i) {
         data.push_back(0);
     }
@@ -63,11 +64,12 @@ int main() {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(7348);
 
-    // Using loopback address
-    inet_pton(AF_INET, "127.0.0.48", &server_addr.sin_addr);
+    // Connect to localhost (make sure IP matches server)
+    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
 
     if (connect(sock, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("connect");
+        close(sock);
         return 1;
     }
 
@@ -80,23 +82,25 @@ int main() {
         return 1;
     }
 
-    // We know message length (for demo, "Hello CRC" is 9 chars)
-    // bits count = 9 chars * 8 bits + 3 CRC bits = 72 + 3 = 75 bits
-    int bitsCount = 75;
+    // For demo: message length is dynamic, but server code expects user input message length.
+    // Here, let's just assume message length is dynamic based on bytes received and CRC size:
+    int totalBits = n * 8;             // total bits received
+    int crcBits = POLY_SIZE - 1;       // bits for CRC
+    int messageBitsCount = totalBits - crcBits;
 
     vector<uint8_t> recvBytes(buffer, buffer + n);
-    vector<int> recvBits = bytesToBits(recvBytes, bitsCount);
+    vector<int> recvBits = bytesToBits(recvBytes, totalBits);
 
-    // Separate message bits and crc bits
-    vector<int> messageBits(recvBits.begin(), recvBits.begin() + bitsCount - (POLY_SIZE - 1));
-    vector<int> crcBits(recvBits.end() - (POLY_SIZE - 1), recvBits.end());
+    // Split message bits and crc bits
+    vector<int> messageBits(recvBits.begin(), recvBits.begin() + messageBitsCount);
+    vector<int> crcBitsReceived(recvBits.end() - crcBits, recvBits.end());
 
-    // Recalculate CRC on message bits
+    // Calculate CRC on message bits
     vector<int> calculatedCRC = crcDivide(messageBits);
 
     bool error = false;
-    for (int i = 0; i < (POLY_SIZE -1); ++i) {
-        if (crcBits[i] != calculatedCRC[i]) {
+    for (int i = 0; i < crcBits; ++i) {
+        if (crcBitsReceived[i] != calculatedCRC[i]) {
             error = true;
             break;
         }
