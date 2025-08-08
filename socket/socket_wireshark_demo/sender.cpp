@@ -67,31 +67,8 @@ vector<uint8_t> bitsToBytes(const vector<int>& bits) {
     return bytes;
 }
 
-// Convert bytes back to bits
-vector<int> bytesToBits(const vector<uint8_t>& bytes, int bitsCount) {
-    vector<int> bits;
-    for (size_t i = 0; i < bytes.size(); ++i) {
-        for (int j = 7; j >= 0; --j) {
-            bits.push_back((bytes[i] >> j) & 1);
-        }
-    }
-    if (bits.size() > bitsCount) {
-        bits.resize(bitsCount);
-    }
-    return bits;
-}
-
-// Convert bits back to string (8 bits per char)
-string bitsToString(const vector<int>& bits) {
-    string s;
-    for (size_t i = 0; i + 7 < bits.size(); i += 8) {
-        char c = 0;
-        for (int j = 0; j < 8; ++j) {
-            c = (c << 1) | bits[i + j];
-        }
-        s.push_back(c);
-    }
-    return s;
+void printBits(const vector<int>& bits) {
+    for (int b : bits) cout << b;
 }
 
 int main() {
@@ -124,44 +101,73 @@ int main() {
         return 1;
     }
 
-    // Original message to send
-    string msg = "Hello CRC";
-    cout << "Original message: " << msg << endl;
+    while(true) {
+        cout << "\nChoose option:\n1. Send without error\n2. Send with error\n3. Exit\nEnter choice: ";
+        int choice; 
+        cin >> choice;
+        cin.ignore(); // flush newline
 
-    // Convert message to bits
-    vector<int> dataBits = stringToBits(msg);
+        if (choice == 3) {
+            cout << "Exiting...\n";
+            break;
+        }
 
-    // Calculate CRC remainder
-    vector<int> crc = crcDivide(dataBits);
+        cout << "Enter message to send: ";
+        string msg;
+        getline(cin, msg);
 
-    cout << "CRC bits: ";
-    for (int b : crc) cout << b;
-    cout << endl;
+        vector<int> dataBits = stringToBits(msg);
+        vector<int> crc = crcDivide(dataBits);
+        vector<int> finalBits = appendCRC(dataBits, crc);
 
-    // Append CRC to data bits
-    vector<int> finalBits = appendCRC(dataBits, crc);
+        // Flip bit if user wants error
+        switch(choice) {
+            case 1:
+                // no error, do nothing
+                break;
+            case 2:
+                // Introduce error: flip bit at position 5 if available
+                if(finalBits.size() > 5) {
+                    finalBits[5] = finalBits[5] ^ 1;
+                }
+                break;
+            default:
+                cout << "Invalid choice, try again.\n";
+                continue;
+        }
 
-    finalBits[5] = finalBits[5] ^ 1;
+        // Print outputs
+        cout << "\n--- Output ---\n";
+        cout << "Message: " << msg << "\n";
 
-    // Pack bits to bytes
-    vector<uint8_t> sendBytes = bitsToBytes(finalBits);
+        cout << "Message in binary: ";
+        printBits(dataBits);
+        cout << "\n";
 
-    // Send bytes over TCP
-    ssize_t sent = send(client_fd, sendBytes.data(), sendBytes.size(), 0);
-    if (sent < 0) {
-        perror("send");
-        close(client_fd);
-        close(server_fd);
-        return 1;
-    }
-    cout << "Sent " << sent << " bytes with CRC appended.\n";
+        cout << "Polynomial (divisor): ";
+        printBits(POLY);
+        cout << "\n";
 
-    // Wait for client response
-    char buffer[1024] = {0};
-    ssize_t n = read(client_fd, buffer, sizeof(buffer) - 1);
-    if (n > 0) {
-        buffer[n] = '\0';
-        cout << "Client says: " << buffer << endl;
+        cout << "CRC bits: ";
+        printBits(crc);
+        cout << "\n";
+
+        cout << "Codeword (data + CRC): ";
+        printBits(finalBits);
+        cout << "\n";
+
+        // Pack bits to bytes
+        vector<uint8_t> sendBytes = bitsToBytes(finalBits);
+
+        // Send bytes over TCP
+        ssize_t sent = send(client_fd, sendBytes.data(), sendBytes.size(), 0);
+        if (sent < 0) {
+            perror("send");
+            close(client_fd);
+            close(server_fd);
+            return 1;
+        }
+        cout << "Sent " << sent << " bytes with CRC appended.\n";
     }
 
     close(client_fd);
